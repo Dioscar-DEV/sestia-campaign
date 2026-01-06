@@ -25,22 +25,21 @@ Módulo para enviar plantillas de WhatsApp Business de forma masiva mediante car
 
 ### 1. Configurar Canales en Base de Datos
 
-Antes de usar el módulo, debes configurar al menos un canal de WhatsApp en la tabla `instancias.instancias_inputs`.
+Antes de usar el módulo, debes configurar al menos un canal de WhatsApp en la tabla `instancia_sofia.instancias_inputs`.
 
 Consulta el archivo [CONFIG_CANALES.md](./CONFIG_CANALES.md) para instrucciones detalladas.
 
 **Ejemplo rápido:**
 
 ```sql
-INSERT INTO instancias.instancias_inputs (
-  canal, key, nameid, custom_name, meta_id, status
+INSERT INTO instancia_sofia.instancias_inputs (
+  canal, key, nameid, custom_name, output_options
 ) VALUES (
-  'whatsapp',
-  'TU_TOKEN, TU_PHONE_ID',
+  14,
+  'TU_TOKEN, TU_PHONE_ID, TU_WABA_ID',
   'mi_canal_whatsapp',
   'Mi Canal WhatsApp',
-  '114235551234567',
-  'live'
+  '{"text": true, "photo": true, "video": false, "gallery": false, "sticker": false, "document": true, "location": false}'::jsonb
 );
 ```
 
@@ -90,32 +89,54 @@ ON CONFLICT (role_key, perm_key) DO NOTHING;
 
 1. Obtén tu **Token Permanente** del System User en Meta Business Manager
 2. Obtén el **Phone ID** de tu número de WhatsApp Business
-3. Configura la **URL de tu API** en Railway (middleware)
-4. Especifica el **nombre de la plantilla** (debe existir y estar activa en Meta)
-5. Selecciona el **idioma** de la plantilla
+3. Obtén el **WABA ID** (ID de la cuenta de WhatsApp Business) para listar plantillas
+4. Configura la **URL de tu API** en Railway (middleware)
+5. Especifica el **nombre de la plantilla** (debe existir y estar activa en Meta)
+6. Selecciona el **idioma** de la plantilla
 
 ### Paso 2: Preparar CSV
 
-Crea un archivo CSV con el siguiente formato:
+Crea un archivo CSV con el siguiente formato (campos obligatorios indicados):
 
 ```csv
-numero,variable1,variable2,url_imagen
-584121234567,Juan Pérez,25.00 USD,https://ejemplo.com/img1.jpg
-584129876543,María López,30.00 USD,
-584125555555,Pedro García,15.50 USD,https://ejemplo.com/promo.png
+numero,cedula,estatus_servicio,variable1,variable2,url_imagen
+584121234567,12345678,ACTIVO,Juan Pérez,25.00 USD,https://ejemplo.com/img1.jpg
+584129876543,87654321,SUSPENDIDO,María López,30.00 USD,
+584125555555,55555555,CORTADO,Pedro García,15.50 USD,https://ejemplo.com/promo.png
 ```
 
 **Columnas:**
-- `numero`: Teléfono con código de país (sin +)
-- `variable1`, `variable2`, etc.: Valores que reemplazan {{1}}, {{2}} en la plantilla
+- `numero` (obligatorio): Teléfono con código de país (sin +)
+- `cedula` (obligatorio): Identificador del abonado
+- `estatus_servicio` (obligatorio): activo | cortado | suspendido (se normaliza a minúsculas)
+- `variable1`: Nombre del cliente (se registra como nombre_cliente)
+- `variable2`: Saldo del cliente (se registra como saldo)
 - `url_imagen`: (Opcional) URL de imagen si la plantilla tiene cabecera de imagen
+- `variable3..N` y cualquier otra columna extra (p.ej. `franquicia`, `direccion`): se guardan en metadata
 
 ### Paso 3: Cargar y Enviar
 
 1. Arrastra el CSV o haz clic para seleccionar
 2. Revisa la vista previa (primeras 5 filas)
-3. Haz clic en "🚀 Iniciar Envío"
+3. Haz clic en "🚀 Iniciar Envío" (se registran leads en BD como pendientes y se envían mensajes)
 4. Monitorea el progreso en tiempo real
+
+## 🗄️ Registro en Base de Datos
+
+Cada fila del CSV se registra en `instancia_sofia.leads_activos` con el siguiente mapeo:
+
+- `user_id` ← `numero`
+- `nombre_cliente` ← `variable1`
+- `canal` ← `channelId` seleccionado (o `whatsapp`)
+- `titulo_anuncio` ← Título de campaña configurado
+- `estado` ← `pendiente`
+- `cedula` ← `cedula`
+- `estatus_servicio` ← `estatus_servicio` (normalizado a minúsculas)
+- `saldo` ← `variable2`
+- `metadata` ← resto de columnas (p.ej. `variable3`, `variable4`, `franquicia`, etc.)
+  - Nota: campos adicionales como `direccion` se guardan dentro de `metadata`
+
+Nota: Debes contar con políticas RLS adecuadas para permitir `insert` en esa tabla desde el cliente.
 
 ## 🔧 API del Middleware
 
@@ -214,6 +235,7 @@ La configuración se guarda automáticamente en `localStorage` del navegador, as
 ### Error: "Plantilla no existe"
 - Confirma que el nombre de la plantilla sea exacto (case-sensitive)
 - Verifica que esté en estado "Approved" en Meta
+ - Si no ves plantillas en el selector: asegúrate de haber incluido `idWaba` como tercer valor en el campo `key` del canal
 
 ### Error: "Número no válido"
 - El número debe incluir código de país sin el símbolo +
@@ -246,9 +268,9 @@ Contenido: Hola {{1}}, tu pago de {{2}} ha sido procesado.
 
 CSV:
 ```csv
-numero,variable1,variable2
-584121234567,Juan,100 USD
-584129876543,María,250 USD
+numero,cedula,estatus_servicio,variable1,variable2
+584121234567,12345678,ACTIVO,Juan,100 USD
+584129876543,87654321,SUSPENDIDO,María,250 USD
 ```
 
 ### Plantilla con Imagen
@@ -260,9 +282,9 @@ Contenido: Hola {{1}}, mira nuestra promo de {{2}} Mbps.
 
 CSV:
 ```csv
-numero,variable1,variable2,url_imagen
-584121234567,Juan,600,https://i.imgur.com/promo.jpg
-584129876543,María,1000,https://i.imgur.com/promo.jpg
+numero,cedula,estatus_servicio,variable1,variable2,url_imagen
+584121234567,12345678,ACTIVO,Juan,600,https://i.imgur.com/promo.jpg
+584129876543,87654321,CORTADO,María,1000,https://i.imgur.com/promo.jpg
 ```
 
 ## 🔐 Seguridad

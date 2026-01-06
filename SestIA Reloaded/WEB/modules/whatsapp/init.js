@@ -79,6 +79,13 @@ function addLog(message, type = 'info') {
     if(modal) {
       modal.classList.add('active');
       document.body.style.overflow = 'hidden';
+      // Accesibilidad: el modal activo no debe estar oculto
+      modal.setAttribute('aria-hidden', 'false');
+      // Enfocar botón de cerrar si existe
+      const closeBtn = modal.querySelector('.wsp-modal-close');
+      if(closeBtn) {
+        try { closeBtn.focus(); } catch(_){}
+      }
     }
   }
 
@@ -87,6 +94,7 @@ function addLog(message, type = 'info') {
     if(modal) {
       modal.classList.remove('active');
       document.body.style.overflow = '';
+      modal.setAttribute('aria-hidden', 'true');
     }
   }
 
@@ -141,12 +149,11 @@ function addLog(message, type = 'info') {
       addLog('Consultando canales de WhatsApp en Supabase...');
       console.log('🔍 Consultando canales de WhatsApp...');
 
-      // Consultar la tabla instancias.instancias_inputs directamente
-        const { data, error } = await window.App.supabase
-          .from('whatsapp_channels')
+      // Consultar la tabla instancia_sofia.instancias_inputs (filtrando por canal ID = 14)
+        const { data, error } = await (window.App.supabase.schema ? window.App.supabase.schema('instancia_sofia') : window.App.supabase)
+          .from('instancias_inputs')
           .select('*')
-          .eq('canal', 'WHATSAPP_ENVIO_MASIVO')
-          .in('status', ['live', 'test'])
+          .eq('canal', 14)
           .order('custom_name', { ascending: true });
 
       if(error){
@@ -169,7 +176,7 @@ function addLog(message, type = 'info') {
       if(state.channels.length > 0){
         // Mostrar detalles de cada canal
         state.channels.forEach(channel => {
-          addLog(`  • Buzón: ${channel.custom_name} (${channel.status})`, 'success');
+          addLog(`  • Buzón: ${channel.custom_name}`, 'success');
         });
       }
       
@@ -205,18 +212,30 @@ function addLog(message, type = 'info') {
     // Limpiar opciones existentes excepto la primera
     selector.innerHTML = '<option value="">Seleccionar buzón...</option>';
 
+    let count = 0;
     state.channels.forEach(channel => {
       const option = document.createElement('option');
       option.value = channel.nameid;
       option.textContent = channel.custom_name;
       option.dataset.channelData = JSON.stringify(channel);
       selector.appendChild(option);
+      count++;
     });
 
     // Desocultar panel de configuración y habilitar selector
     showPanel('wsp-config-panel', true);
     selector.disabled = false;
-    addLog('Selector de buzón listo para usar', 'success');
+    addLog(`Selector listo. Opciones cargadas: ${count}`, 'success');
+
+    // Auto-seleccionar el primer canal si existe
+    if(count > 0){
+      const first = state.channels[0];
+      selector.value = first.nameid;
+      addLog(`Auto-seleccionado: ${first.custom_name}`, 'info');
+      // Disparar el handler para cargar token/phone
+      const event = new Event('change');
+      selector.dispatchEvent(event);
+    }
   }
 
   function parseChannelKey(keyString){
@@ -468,7 +487,7 @@ function addLog(message, type = 'info') {
       // Auto-rellenar los campos técnicos (ocultos en la interfaz)
       state.config.channelId = channelData.nameid;
       state.config.token = keyData.token || '';
-      state.config.phoneId = keyData.phone_id || channelData.meta_id || '';
+      state.config.phoneId = keyData.phone_id || '';
       state.config.idWaba = keyData.idWaba || '';
       state.config.apiUrl = 'https://smart-whatsapp-api-fibex-production-d80a.up.railway.app/enviar-mensaje';
 
@@ -478,6 +497,7 @@ function addLog(message, type = 'info') {
 
       if(!state.config.idWaba || !state.config.token){
         addLog('No se puede consultar plantillas: falta idWaba o token', 'error');
+        addLog('Sugerencia: agregue el idWaba como tercer valor en "key": token, phone_id, idWaba', 'warning');
         populateTemplateSelector([]);
         return;
       }
@@ -534,6 +554,13 @@ function addLog(message, type = 'info') {
         selector.onchange = null;
         selector.addEventListener('change', e => {
           if(e.target.value) {
+            // Guardar selección en config para el envío
+            state.config.templateName = e.target.value;
+            try {
+              const opt = e.target.options[e.target.selectedIndex];
+              const tmpl = opt?.dataset?.template ? JSON.parse(opt.dataset.template) : null;
+              if (tmpl?.language) state.config.language = tmpl.language;
+            } catch(_){ }
             // Cambiar a showTemplatePreview sin parámetros
             showTemplatePreview();
           }
@@ -549,7 +576,8 @@ function addLog(message, type = 'info') {
   function saveConfig(){
     state.config.channelId = qs('wsp-channel-selector')?.value || '';
     state.config.campaignTitle = qs('wsp-campaign-title')?.value.trim() || '';
-    state.config.templateName = qs('wsp-template-name')?.value.trim() || 'servicio_suspendido'; // Template fijo
+    // Tomar del selector dinámico con fallback
+    state.config.templateName = qs('wsp-template-selector')?.value || state.config.templateName || 'servicio_suspendido';
     state.config.language = qs('wsp-language')?.value || 'es';
 
     if(!state.config.channelId){
@@ -612,30 +640,82 @@ function addLog(message, type = 'info') {
 
   function parseCSV(text){
     try {
-      const lines = text.split('\n').filter(line => line.trim());
-      if(lines.length < 2){
-        setError('El CSV debe tener al menos una fila de encabezados y una de datos');
+      // Parser simple con soporte para comillas dobles y comas en valores
+      const rows = [];
+      let i = 0, field = '', row = [], inQuotes = false;
+      const pushField = () => { row.push(field); field = ''; };
+      const pushRow = () => { rows.push(row); row = []; };
+      for (; i < text.length; i++){
+        const ch = text[i];
+        if (inQuotes){
+          if (ch === '"'){
+            if (text[i+1] === '"'){ field += '"'; i++; }
+            else { inQuotes = false; }
+          } else {
+            field += ch;
+          }
+        } else {
+          if (ch === '"') { inQuotes = true; }
+          else if (ch === ',') { pushField(); }
+          else if (ch === '\n' || ch === '\r'){
+            // soporte CRLF/ LF
+            if (ch === '\r' && text[i+1] === '\n') i++;
+            pushField();
+            pushRow();
+          } else { field += ch; }
+        }
+      }
+      // último campo/fila si quedó algo
+      if (field.length > 0 || row.length > 0){ pushField(); pushRow(); }
+
+      // Eliminar filas vacías
+      const trimmedRows = rows.filter(r => r.join('').trim().length > 0);
+      if (trimmedRows.length < 2){
+        setError('El CSV debe tener encabezados y al menos una fila de datos');
         return;
       }
 
-      const headers = lines[0].split(',').map(h => h.trim());
-      const data = [];
+      // Procesar encabezados
+      let headers = trimmedRows[0].map(h => (h || '').trim());
+      if (headers[0].charCodeAt(0) === 0xFEFF){
+        headers[0] = headers[0].replace(/^\uFEFF/, '');
+      }
+      const headersLc = headers.map(h => h.toLowerCase());
 
-      for(let i = 1; i < lines.length; i++){
-        const values = lines[i].split(',').map(v => v.trim());
-        const row = {};
-        headers.forEach((header, idx) => {
-          row[header] = values[idx] || '';
-        });
-        
-        // Validar que tenga al menos número
-        if(row.numero){
-          data.push(row);
+      // Validaciones obligatorias
+      const required = ['numero','cedula','estatus_servicio'];
+      const missing = required.filter(k => !headersLc.includes(k));
+      if (missing.length){
+        setError(`Faltan columnas obligatorias en el CSV: ${missing.join(', ')}`);
+        return;
+      }
+
+      const data = [];
+      for (let r = 1; r < trimmedRows.length; r++){
+        const values = trimmedRows[r];
+        const obj = {};
+        headers.forEach((h, idx) => { obj[h] = (values[idx] ?? '').toString().trim(); });
+
+        // Normalizar numero (mantener solo dígitos)
+        if (obj.numero) obj.numero = obj.numero.replace(/\D+/g, '');
+        // Normalizar estatus_servicio
+        if (obj.estatus_servicio){
+          obj.estatus_servicio = obj.estatus_servicio.toLowerCase();
+          const allowed = ['activo','cortado','suspendido'];
+          if (!allowed.includes(obj.estatus_servicio)){
+            addLog('❌', `Fila ${r}: estatus_servicio inválido: ${obj.estatus_servicio}`, 'error');
+            continue; // descartar fila inválida
+          }
+        }
+
+        // Requisito mínimo: numero, cedula, estatus_servicio
+        if (obj.numero && obj.cedula && obj.estatus_servicio){
+          data.push(obj);
         }
       }
 
-      if(data.length === 0){
-        setError('No se encontraron filas válidas con números de teléfono');
+      if (data.length === 0){
+        setError('No se encontraron filas válidas con numero, cedula y estatus_servicio');
         return;
       }
 
@@ -756,6 +836,15 @@ function addLog(message, type = 'info') {
     // Preparar variables (filtrar vacíos)
     const variables = [variable1, variable2, variable3, variable4].filter(v => v);
 
+    // Registrar lead en BD antes de enviar
+    try {
+      const leadId = await insertLeadRecord(row);
+      if (leadId) row.__lead_id = leadId;
+    } catch (e){
+      console.warn('No se pudo registrar lead:', e?.message || e);
+      addLog('⚠️', `Fila ${index}: No se pudo registrar en BD (${e.message || 'error desconocido'})`, 'warning');
+    }
+
     // Preparar body de la request (formato exacto que espera la API)
     const body = {
       token: state.config.token,
@@ -788,6 +877,18 @@ function addLog(message, type = 'info') {
         state.stats.pending--;
         updateStats();
         addLog('✅', `${numero} - Enviado correctamente (ID: ${result.id || 'N/A'})`, 'success');
+        // Asegurar inserción y actualizar metadata de envío (éxito)
+        try {
+          if (!row.__lead_id) {
+            const leadId = await insertLeadRecord(row);
+            if (leadId) row.__lead_id = leadId;
+          }
+          if (row.__lead_id) {
+            await updateLeadSendResult(row.__lead_id, { success: true, wamid: result.id || null });
+          }
+        } catch (e){
+          console.warn('No se pudo registrar/actualizar el lead (éxito):', e?.message || e);
+        }
       } else {
         throw new Error(result.meta_error || result.message || 'Error desconocido');
       }
@@ -796,6 +897,100 @@ function addLog(message, type = 'info') {
       state.stats.pending--;
       updateStats();
       addLog('❌', `${numero} - Error: ${error.message}`, 'error');
+      // Asegurar inserción y actualizar metadata de envío (fallo)
+      try {
+        if (!row.__lead_id) {
+          const leadId = await insertLeadRecord(row);
+          if (leadId) row.__lead_id = leadId;
+        }
+        if (row.__lead_id) {
+          await updateLeadSendResult(row.__lead_id, { success: false, errorMessage: error.message });
+        }
+      } catch (e){
+        console.warn('No se pudo registrar/actualizar el lead (fallo):', e?.message || e);
+      }
+    }
+  }
+
+  async function insertLeadRecord(row){
+    const supabase = window.App?.supabase;
+    if (!supabase) throw new Error('Supabase no disponible');
+
+    // Campos base
+    const user_id = row.numero;
+    const nombre_cliente = row.variable1 || '';
+    const canal = state.config.channelId || 'whatsapp';
+    const titulo_anuncio = state.config.campaignTitle || '';
+    const estado = 'pendiente';
+    const cedula = row.cedula || null;
+    const estatus_servicio = (row.estatus_servicio || '').toLowerCase();
+    const saldo = row.variable2 || null;
+
+    // Construir metadata con campos adicionales dinámicos
+    const baseKeys = new Set(['numero','cedula','estatus_servicio','variable1','variable2','url_imagen']);
+    const metadata = {};
+    Object.keys(row).forEach(k => {
+      if (!baseKeys.has(k)){
+        // Incluir variable3,4,5... y cualquier campo extra (franquicia, etc.)
+        metadata[k] = row[k];
+      }
+    });
+    // Campo de control de envío siempre presente
+    if (typeof metadata.envio_exitoso === 'undefined') metadata.envio_exitoso = false;
+    if (typeof metadata.envio_intentos === 'undefined') metadata.envio_intentos = 0;
+
+    const payload = {
+      user_id,
+      nombre_cliente,
+      canal,
+      titulo_anuncio,
+      estado,
+      metadata,
+      cedula,
+      estatus_servicio,
+      saldo
+    };
+
+    const { data, error } = await (supabase.schema ? supabase.schema('instancia_sofia') : supabase)
+      .from('leads_activos')
+      .insert(payload)
+      .select('id, metadata')
+      .single();
+    if (error) throw error;
+    return data?.id;
+  }
+
+  async function updateLeadSendResult(leadId, { success, wamid = null, errorMessage = null }){
+    const supabase = window.App?.supabase;
+    if (!supabase || !leadId) return;
+
+    try {
+      // Leer metadata actual
+      const { data: existing, error: selErr } = await (supabase.schema ? supabase.schema('instancia_sofia') : supabase)
+        .from('leads_activos')
+        .select('id, metadata')
+        .eq('id', leadId)
+        .single();
+      if (selErr) throw selErr;
+
+      const prev = existing?.metadata || {};
+      const intentos = (prev.envio_intentos || 0) + 1;
+      const merged = {
+        ...prev,
+        envio_exitoso: !!success,
+        envio_intentos: intentos,
+        envio_wamid: wamid || prev.envio_wamid || null,
+        envio_error: success ? null : (errorMessage || 'error'),
+        envio_fecha: new Date().toISOString()
+      };
+
+      const { error: updErr } = await (supabase.schema ? supabase.schema('instancia_sofia') : supabase)
+        .from('leads_activos')
+        .update({ metadata: merged })
+        .eq('id', leadId);
+      if (updErr) throw updErr;
+    } catch (e){
+      console.warn('updateLeadSendResult error:', e?.message || e);
     }
   }
 
@@ -901,10 +1096,10 @@ function addLog(message, type = 'info') {
 
   // ==================== DOWNLOAD TEMPLATE ====================
   function downloadTemplate(){
-    const csvContent = `numero,variable1,variable2,variable3,variable4,url_imagen
-584121234567,Juan,25.00,Promoción,Mes de Enero,https://ejemplo.com/promo.jpg
-584129876543,María,30.00,Descuento,Mes de Febrero,
-584125555555,Pedro,15.50,Oferta,Mes de Marzo,https://ejemplo.com/oferta.png`;
+    const csvContent = `numero,cedula,estatus_servicio,variable1,variable2,variable3,variable4,url_imagen
+584121234567,12345678,ACTIVO,Juan,25.00,Promoción,Mes de Enero,https://ejemplo.com/promo.jpg
+584129876543,87654321,SUSPENDIDO,María,30.00,Descuento,Mes de Febrero,
+584125555555,55555555,CORTADO,Pedro,15.50,Oferta,Mes de Marzo,https://ejemplo.com/oferta.png`;
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

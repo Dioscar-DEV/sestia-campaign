@@ -132,7 +132,7 @@
           <p class="wsp-upload-text">Arrastra tu archivo CSV o haz clic para seleccionar</p>
           <div class="wsp-upload-hint">
             <div class="hint-item">
-              <strong>Formato:</strong> numero,variable1,variable2,url_imagen
+              <strong>Formato:</strong> numero,cedula,estatus_servicio,variable1,variable2,[variable3..],url_imagen
               <div class="tooltip">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="help-icon">
                   <circle cx="12" cy="12" r="10"/>
@@ -141,11 +141,15 @@
                 </svg>
                 <span class="tooltip-text">
                   <strong>Columnas del CSV:</strong><br>
-                  • numero: Teléfono con código de país (sin +)<br>
-                  • variable1, variable2: Reemplazan {{1}}, {{2}} en la plantilla<br>
+                  • numero: Teléfono con código de país (sin +) → user_id<br>
+                  • cedula: Obligatoria → cedula<br>
+                  • estatus_servicio: Obligatorio (activo|cortado|suspendido)<br>
+                  • variable1: Nombre del cliente → nombre_cliente<br>
+                  • variable2: Saldo → saldo<br>
+                  • variable3..N y columnas extra (p.ej. franquicia) → metadata<br>
                   • url_imagen: (Opcional) URL de imagen si la plantilla lo requiere<br><br>
                   <strong>Ejemplo:</strong><br>
-                  584121234567,Juan,25.00 USD,https://imagen.jpg
+                  584121234567,12345678,ACTIVO,Juan,25.00 USD,Promo Enero,,https://imagen.jpg
                 </span>
               </div>
             </div>
@@ -257,15 +261,19 @@
         </ul>
 
         <h4>2. Formato del CSV</h4>
-        <pre class="wsp-code">numero,variable1,variable2,url_imagen
-584121234567,Juan,25.00 USD,https://ejemplo.com/img.jpg
-584129876543,María,30.00 USD,
-584125555555,Pedro,15.50 USD,https://ejemplo.com/promo.png</pre>
+        <pre class="wsp-code">numero,cedula,estatus_servicio,variable1,variable2,url_imagen
+      584121234567,12345678,ACTIVO,Juan,25.00 USD,https://ejemplo.com/img.jpg
+      584129876543,87654321,SUSPENDIDO,María,30.00 USD,
+      584125555555,55555555,CORTADO,Pedro,15.50 USD,https://ejemplo.com/promo.png</pre>
 
         <h4>3. Columnas del CSV</h4>
         <ul>
-          <li><strong>numero:</strong> Teléfono con código de país (sin +)</li>
-          <li><strong>variable1, variable2...:</strong> Valores para {{1}}, {{2}}, etc.</li>
+          <li><strong>numero:</strong> Teléfono con código de país (sin +) → user_id</li>
+          <li><strong>cedula:</strong> Obligatoria → cedula</li>
+          <li><strong>estatus_servicio:</strong> activo | cortado | suspendido (mayúsculas/ minúsculas permitido)</li>
+          <li><strong>variable1:</strong> Nombre del cliente ({{1}}) → nombre_cliente</li>
+          <li><strong>variable2:</strong> Saldo ({{2}}) → saldo</li>
+          <li><strong>Extras:</strong> variable3..N y columnas adicionales (p.ej. franquicia) → metadata</li>
           <li><strong>url_imagen:</strong> (Opcional) URL de imagen si la plantilla lo requiere</li>
         </ul>
 
@@ -275,6 +283,7 @@
           <li>La plantilla debe estar ACTIVA en Meta Business Manager</li>
           <li>Los números deben tener WhatsApp activo</li>
           <li>El envío se realiza con delay de 2 segundos entre mensajes</li>
+          <li>Se registran los leads en BD (leads_activos) con estado "pendiente"</li>
           <li>Puedes exportar el log al finalizar</li>
         </ul>
       </div>

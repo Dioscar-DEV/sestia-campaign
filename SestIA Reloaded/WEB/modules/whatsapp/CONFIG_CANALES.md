@@ -2,34 +2,33 @@
 
 ## Descripción General
 
-El módulo de WhatsApp ahora carga dinámicamente los canales desde la tabla `instancias.instancias_inputs` de Supabase. Esto permite gestionar múltiples cuentas de WhatsApp Business sin necesidad de editar código.
+El módulo de WhatsApp ahora carga dinámicamente los canales desde la tabla `instancia_sofia.instancias_inputs` de Supabase. Esto permite gestionar múltiples cuentas de WhatsApp Business sin necesidad de editar código.
 
 ## Estructura de la Tabla
 
-La tabla `instancias_inputs` tiene los siguientes campos relevantes:
+La tabla `instancia_sofia.instancias_inputs` tiene los siguientes campos relevantes:
 
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
 | `id` | BIGINT | ID auto-incremental |
-| `canal` | TEXT | Tipo de canal (debe ser "whatsapp") |
+| `canal` | BIGINT | FK al `instancia_sofia.input_channels(id)` |
 | `key` | TEXT | Credenciales separadas por comas |
 | `nameid` | TEXT | Identificador único del canal |
 | `custom_name` | TEXT | Nombre descriptivo que aparece en el selector |
-| `meta_id` | TEXT | ID del teléfono de Meta (opcional) |
-| `status` | TEXT | Estado: 'test', 'live', u 'off' |
+| `output_options` | JSONB | Capacidades del canal (text, photo, etc.) |
 
 ## Formato del Campo `key`
 
 El campo `key` debe contener los valores separados por comas en el siguiente orden:
 
 ```
-token, phone_id
+token, phone_id, idWaba
 ```
 
 ### Ejemplo:
 
 ```
-EAAGl2ZBBtZABoBAPxxx..., 114235551234567
+EAAGl2ZBBtZABoBAPxxx..., 114235551234567, 987654321098765
 ```
 
 **Importante:** Los valores van directamente, sin llaves ni etiquetas.
@@ -39,33 +38,30 @@ EAAGl2ZBBtZABoBAPxxx..., 114235551234567
 ### Opción 1: Desde la interfaz de Supabase
 
 1. Abre tu proyecto de Supabase
-2. Ve a la tabla `instancias.instancias_inputs`
+2. Ve a la tabla `instancia_sofia.instancias_inputs`
 3. Haz clic en "Insert" → "Insert row"
 4. Completa los campos:
-   - **canal:** `whatsapp`
-   - **key:** `TU_TOKEN, TU_PHONE_ID`
-   - **nameid:** `fibex_sofia_6696` (identificador único)
-   - **custom_name:** `Fibex Telecom - Sofía 6696 WhatsApp` (nombre descriptivo)
-   - **meta_id:** `114235551234567` (opcional)
-   - **status:** `live` o `test`
+  - **canal:** `14` (ID del canal de "envío masivo WhatsApp")
+    - **key:** `TU_TOKEN, TU_PHONE_ID, TU_WABA_ID`
+  - **nameid:** `fibex_sofia_6696_whatsapp` (identificador único)
+  - **custom_name:** `Fibex Telecom - Sofía 6696 WhatsApp` (nombre descriptivo)
+  - **output_options:** `{ "text": true, "photo": true, "video": false, "gallery": false, "sticker": false, "document": true, "location": false }`
 
 ### Opción 2: Con SQL
 
 ```sql
-INSERT INTO instancias.instancias_inputs (
+INSERT INTO instancia_sofia.instancias_inputs (
   canal,
   key,
   nameid,
   custom_name,
-  meta_id,
-  status
+  output_options
 ) VALUES (
-  'whatsapp',
-  'EAAGl2ZBBtZABoBAPxxx..., 114235551234567',
-  'fibex_sofia_6696',
+  14,
+  'EAAGl2ZBBtZABoBAPxxx..., 114235551234567, 987654321098765',
+  'fibex_sofia_6696_whatsapp',
   'Fibex Telecom - Sofía 6696 WhatsApp',
-  '114235551234567',
-  'live'
+  '{"text": true, "photo": true, "video": false, "gallery": false, "sticker": false, "document": true, "location": false}'
 );
 ```
 
@@ -121,18 +117,17 @@ Una vez configurados los canales en la base de datos:
 
 ### El selector está vacío
 
-- Verifica que hay filas en `instancias_inputs` con `canal = 'whatsapp'`
-- Verifica que el `status` sea `'live'` o `'test'`, no `'off'`
+- Verifica que hay filas en `instancia_sofia.instancias_inputs` con `canal = 14`
 - Revisa la consola del navegador para errores de Supabase
 
 ### Error al cargar canales
 
-- Verifica que las políticas RLS permitan lectura en `instancias.instancias_inputs`
+- Verifica que las políticas RLS permitan lectura en `instancia_sofia.instancias_inputs`
 - Verifica que el usuario esté autenticado
-- Revisa los permisos del esquema `instancias`
+- Revisa los permisos del esquema `instancia_sofia`
 
 ### Los campos no se auto-completan
 
-- Verifica que el campo `key` tenga el formato correcto: `token, phone_id`
+- Verifica que el campo `key` tenga el formato correcto: `token, phone_id, idWaba`
 - Revisa la consola para ver qué datos se están parseando
 - Asegúrate de que los valores en `key` no tengan espacios extras al inicio/final
