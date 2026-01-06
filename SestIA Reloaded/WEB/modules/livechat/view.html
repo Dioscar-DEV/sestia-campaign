@@ -1,0 +1,43 @@
+<div id="livechat-module" class="module-container fade-in">
+    <header class="livechat-header">
+        <div class="header-left">
+            <button id="livechat-back-btn" class="btn-icon" title="Volver a Contactos">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                </svg>
+            </button>
+            <div class="chat-user-info">
+                <div class="chat-avatar" id="chat-avatar">?</div>
+                <div class="chat-meta">
+                    <h2 id="chat-title">Cargando...</h2>
+                    <span id="chat-subtitle" class="status-text">...</span>
+                </div>
+            </div>
+        </div>
+        <div class="header-right">
+            <button id="livechat-refresh-btn" class="btn-icon" title="Recargar mensajes">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6"></path>
+                    <path d="M1 20v-6h6"></path>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <div class="livechat-body">
+        <div id="livechat-messages" class="messages-container">
+            <!-- Los mensajes se inyectarán aquí -->
+            <div class="chat-placeholder">
+                <div class="spinner"></div>
+                <p>Cargando historial...</p>
+            </div>
+        </div>
+    </div>
+
+    <footer class="livechat-footer">
+        <div class="input-disabled-notice">
+            <span>🔒 El envío de mensajes está deshabilitado en esta vista.</span>
+        </div>
+    </footer>
+</div>
