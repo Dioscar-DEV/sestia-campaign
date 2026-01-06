@@ -1,0 +1,38 @@
+# Ignore Node and build artifacts in WEB
+WEB/node_modules/
+WEB/dist/
+WEB/build/
+WEB/.cache/
+WEB/.parcel-cache/
+WEB/.vite/
+
+# Environment files in WEB
+WEB/.env
+WEB/.env.local
+WEB/.env.*
+
+# Logs
+logs/
+*.log
+WEB/npm-debug.log*
+WEB/yarn-debug.log*
+WEB/yarn-error.log*
+
+# Editor files
+.vscode/
+*.code-workspace
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+
+# Coverage
+coverage/
+
+# Misc
+WEB/.DS_Store

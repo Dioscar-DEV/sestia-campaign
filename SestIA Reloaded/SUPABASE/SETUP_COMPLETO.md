@@ -193,7 +193,7 @@ Tablas y vista principales (todas bajo esquema `instancias`):
    - Campos: `name`, `output_supports` (JSONB), `core_supports` (JSONB).
 6) `cores_inputs`: Configuración específica de inputs para los cores del agente (inputs por canal).
    - FK `canal` referencia a `input_channels(name)`.
-7) `instancias_inputs`: Configuración de inputs activos de las instancias del agente (con `meta_id` y `status` test/live/off).
+7) `instancia_sofia.instancias_inputs`: Configuración de inputs activos de las instancias del agente (con `meta_id` y `status` test/live/off).
    - FK `canal` referencia a `input_channels(name)`.
 8) `input_channels_test`: Tabla para pruebas de conexión y flujo de datos en canales de entrada.
 9) `agent_contact_list`: Contactos administrados por el agente, PK `(user_id)`.
